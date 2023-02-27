@@ -17,12 +17,11 @@ import (
 //
 // A map can only be in one of the following categories
 //
-//               ----------------------         ---------------------------------------
-//              |   Internally loaded  |       |           Externally loaded           |
-//               ----------------------         ---------------------------------------
-//  Categories: |  Pinned | Not Pinned |       |  Pinned | Pinned and Edited  | Edited |
-//               ----------------------         ---------------------------------------
-//
+//	             ----------------------         ---------------------------------------
+//	            |   Internally loaded  |       |           Externally loaded           |
+//	             ----------------------         ---------------------------------------
+//	Categories: |  Pinned | Not Pinned |       |  Pinned | Pinned and Edited  | Edited |
+//	             ----------------------         ---------------------------------------
 type MapCleanupType int
 
 const (
@@ -91,15 +90,15 @@ func loadNewMap(spec ebpf.MapSpec, options MapOptions) (*Map, error) {
 
 	// Pin map if need be
 	if managerMap.PinPath != "" {
-		if err := managerMap.array.Pin(managerMap.PinPath); err != nil {
+		if err = managerMap.array.Pin(managerMap.PinPath); err != nil {
 			return nil, fmt.Errorf("couldn't pin map %s at %s: %w", managerMap.Name, managerMap.PinPath, err)
 		}
 	}
 	return &managerMap, nil
 }
 
-// Init - Initialize a map
-func (m *Map) Init(manager *Manager) error {
+// init - Initialize a map
+func (m *Map) init(manager *Manager) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
 	if m.state >= initialized {
@@ -113,7 +112,9 @@ func (m *Map) Init(manager *Manager) error {
 			return fmt.Errorf("couldn't find map at maps/%s: %w", m.Name, ErrUnknownSection)
 		}
 		m.array = array
+	}
 
+	if m.array != nil {
 		// Pin map if needed
 		if m.PinPath != "" {
 			if err := m.array.Pin(m.PinPath); err != nil {
@@ -121,6 +122,7 @@ func (m *Map) Init(manager *Manager) error {
 			}
 		}
 	}
+
 	m.state = initialized
 	return nil
 }
@@ -171,9 +173,9 @@ func (m *Map) close(cleanup MapCleanupType) error {
 		var err error
 		// Remove pin if needed
 		if m.PinPath != "" {
-			err = ConcatErrors(err, os.Remove(m.PinPath))
+			err = concatErrors(err, os.Remove(m.PinPath))
 		}
-		err = ConcatErrors(err, m.array.Close())
+		err = concatErrors(err, m.array.Close())
 		if err != nil {
 			return err
 		}

@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/cilium/ebpf"
@@ -23,9 +24,16 @@ type PerfMapOptions struct {
 	// ring buffer.
 	DataHandler func(CPU int, data []byte, perfMap *PerfMap, manager *Manager)
 
+	// RecordHandler - Callback function called when a new record was retrieved from the perf
+	// ring buffer.
+	RecordHandler func(record *perf.Record, perfMap *PerfMap, manager *Manager)
+
 	// LostHandler - Callback function called when one or more events where dropped by the kernel
 	// because the perf ring buffer was full.
 	LostHandler func(CPU int, count uint64, perfMap *PerfMap, manager *Manager)
+
+	// RecordGetter - if specified this getter will be used to get a new record
+	RecordGetter func() *perf.Record
 }
 
 // PerfMap - Perf ring buffer reader wrapper
@@ -48,18 +56,18 @@ func loadNewPerfMap(spec ebpf.MapSpec, options MapOptions, perfOptions PerfMapOp
 
 	// Create the new map
 	perfMap := PerfMap{
-		Map:            *innerMap, //nolint:copylocks
+		Map:            *innerMap, //nolint:govet
 		PerfMapOptions: perfOptions,
 	}
 	return &perfMap, nil
 }
 
-// Init - Initialize a map
-func (m *PerfMap) Init(manager *Manager) error {
+// init - Initialize a map
+func (m *PerfMap) init(manager *Manager) error {
 	m.manager = manager
 
-	if m.DataHandler == nil {
-		return fmt.Errorf("no DataHandler set for %s", m.Name)
+	if m.DataHandler == nil && m.RecordHandler == nil {
+		return fmt.Errorf("no DataHandler/RecordHandler set for %s", m.Name)
 	}
 
 	// Set default values if not already set
@@ -71,7 +79,7 @@ func (m *PerfMap) Init(manager *Manager) error {
 	}
 
 	// Initialize the underlying map structure
-	if err := m.Map.Init(manager); err != nil {
+	if err := m.Map.init(manager); err != nil {
 		return err
 	}
 	return nil
@@ -98,13 +106,19 @@ func (m *PerfMap) Start() error {
 	}
 	// Start listening for data
 	go func() {
-		var record perf.Record
+		record := &perf.Record{}
 		var err error
+
 		m.manager.wg.Add(1)
 		for {
-			record, err = m.perfReader.Read()
-			if err != nil {
-				if perf.IsClosed(err) {
+			if m.PerfMapOptions.RecordGetter != nil {
+				record = m.PerfMapOptions.RecordGetter()
+			} else if m.DataHandler != nil {
+				record = new(perf.Record)
+			}
+
+			if err = m.perfReader.ReadInto(record); err != nil {
+				if isPerfClosed(err) {
 					m.manager.wg.Done()
 					return
 				}
@@ -113,13 +127,19 @@ func (m *PerfMap) Start() error {
 				}
 				continue
 			}
+
 			if record.LostSamples > 0 {
 				if m.LostHandler != nil {
 					m.LostHandler(record.CPU, record.LostSamples, m, m.manager)
 				}
 				continue
 			}
-			m.DataHandler(record.CPU, record.RawSample, m, m.manager)
+
+			if m.RecordHandler != nil {
+				m.RecordHandler(record, m, m.manager)
+			} else if m.DataHandler != nil {
+				m.DataHandler(record.CPU, record.RawSample, m, m.manager)
+			}
 		}
 	}()
 
@@ -131,7 +151,7 @@ func (m *PerfMap) Start() error {
 func (m *PerfMap) Stop(cleanup MapCleanupType) error {
 	m.stateLock.Lock()
 	defer m.stateLock.Unlock()
-	if m.state < running {
+	if m.state < paused {
 		return nil
 	}
 
@@ -173,4 +193,8 @@ func (m *PerfMap) Resume() error {
 	}
 	m.state = running
 	return nil
+}
+
+func isPerfClosed(err error) bool {
+	return errors.Is(err, perf.ErrClosed)
 }

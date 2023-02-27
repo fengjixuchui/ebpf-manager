@@ -1,31 +1,36 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
 	"fmt"
 	"os"
 	"os/signal"
 	"time"
 
-	manager "github.com/DataDog/ebpf-manager"
 	"github.com/sirupsen/logrus"
+
+	manager "github.com/DataDog/ebpf-manager"
 )
+
+//go:embed ebpf/bin/probe.o
+var Probe []byte
 
 var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "MyVFSMkdir",
-				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "UtimesCommon",
-				EBPFSection:  "kprobe/utimes_common",
-				EBPFFuncName: "kprobe_utimes_common",
+				EBPFFuncName: "kretprobe_utimes_common",
 			},
-			MatchFuncName: "utimes_common",
+			MatchFuncName:   "utimes",
+			KProbeMaxActive: 100,
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
@@ -33,11 +38,9 @@ var m = &manager.Manager{
 				// m.CloneProgram for example), or if multiple programs with the exact same section are attaching
 				// at the exact same hook point (using m.AddHook for example, or simply because another manager
 				// on the system is planning on hooking there).
-				EBPFSection:  "kretprobe/mkdirat",
 				EBPFFuncName: "kretprobe_mkdirat",
 			},
 			SyscallFuncName: "mkdirat",
-			KProbeMaxActive: 100,
 		},
 	},
 }
@@ -49,7 +52,7 @@ func main() {
 	}
 
 	// Initialize the manager
-	if err := m.InitWithOptions(recoverAssets(), options); err != nil {
+	if err := m.InitWithOptions(bytes.NewReader(Probe), options); err != nil {
 		logrus.Fatal(err)
 	}
 

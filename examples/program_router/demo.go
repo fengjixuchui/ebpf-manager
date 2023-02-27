@@ -10,10 +10,10 @@ import (
 
 func demoTailCall() error {
 	logrus.Println("generating some traffic to show what happens when the tail call is not set up ...")
-	trigger()
+	trigger1()
 	time.Sleep(1 * time.Second)
 
-	prog, _, err := m2.GetProgram(manager.ProbeIdentificationPair{EBPFSection: "classifier/three", EBPFFuncName: "three"})
+	prog, _, err := m2.GetProgram(manager.ProbeIdentificationPair{EBPFFuncName: "three"})
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -24,7 +24,6 @@ func demoTailCall() error {
 			ProgArrayName: "tc_prog_array",
 			Key:           uint32(1),
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "classifier/two",
 				EBPFFuncName: "two",
 			},
 		},
@@ -40,6 +39,6 @@ func demoTailCall() error {
 		return err
 	}
 	logrus.Println("generating some traffic to show what happens when the tail call is set up ...")
-	trigger()
+	trigger2()
 	return nil
 }

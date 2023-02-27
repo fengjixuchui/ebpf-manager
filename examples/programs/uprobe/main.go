@@ -1,16 +1,21 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
+
 	"github.com/sirupsen/logrus"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
 
+//go:embed ebpf/bin/probe.o
+var Probe []byte
+
 var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "uprobe/readline",
 				EBPFFuncName: "readline",
 			},
 			BinaryPath: "/usr/bin/bash",
@@ -20,7 +25,7 @@ var m = &manager.Manager{
 
 func main() {
 	// Initialize the manager
-	if err := m.Init(recoverAssets()); err != nil {
+	if err := m.Init(bytes.NewReader(Probe)); err != nil {
 		logrus.Fatal(err)
 	}
 

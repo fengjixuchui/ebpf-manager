@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
 	"flag"
 
 	"github.com/sirupsen/logrus"
@@ -8,34 +10,31 @@ import (
 	manager "github.com/DataDog/ebpf-manager"
 )
 
+//go:embed ebpf/bin/probe.o
+var Probe []byte
+
 var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/mkdirat",
 				EBPFFuncName: "kprobe_mkdirat",
 			},
-			PinPath:         "/sys/fs/bpf/mkdirat",
 			SyscallFuncName: "mkdirat",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kretprobe/mkdirat",
 				EBPFFuncName: "kretprobe_mkdirat",
 			},
 			SyscallFuncName: "mkdirat",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/mkdir",
 				EBPFFuncName: "kprobe_mkdir",
 			},
-			PinPath:         "/sys/fs/bpf/mkdir",
 			SyscallFuncName: "mkdir",
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kretprobe/mkdir",
 				EBPFFuncName: "kretprobe_mkdir",
 			},
 			SyscallFuncName: "mkdir",
@@ -60,7 +59,7 @@ func main() {
 	logrus.Println("if they exist, pinned object will be automatically loaded")
 
 	// Initialize the manager
-	if err := m.Init(recoverAssets()); err != nil {
+	if err := m.Init(bytes.NewReader(Probe)); err != nil {
 		logrus.Fatal(err)
 	}
 
@@ -77,7 +76,7 @@ func main() {
 	}
 
 	if kill {
-		logrus.Println("=> Stopping the program without cleanup, the pinned map and programs should show up in /sys/fs/bpf/")
+		logrus.Println("=> Stopping the program without cleanup, the pinned map should show up in /sys/fs/bpf/")
 		logrus.Println("=> Restart without --kill to load the pinned object from the bpf file system and properly remove them")
 		return
 	}

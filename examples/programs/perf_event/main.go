@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
 	"fmt"
 	"os"
 	"os/signal"
@@ -11,11 +13,13 @@ import (
 	manager "github.com/DataDog/ebpf-manager"
 )
 
+//go:embed ebpf/bin/probe.o
+var Probe []byte
+
 var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "perf_event/cpu_clock",
 				EBPFFuncName: "perf_event_cpu_clock",
 			},
 			SampleFrequency: 1,
@@ -27,7 +31,7 @@ var m = &manager.Manager{
 
 func main() {
 	// Initialize the manager
-	if err := m.Init(recoverAssets()); err != nil {
+	if err := m.Init(bytes.NewReader(Probe)); err != nil {
 		logrus.Fatal(err)
 	}
 

@@ -1,24 +1,29 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
+
 	"github.com/sirupsen/logrus"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
+
+//go:embed ebpf/bin/probe.o
+var Probe []byte
 
 var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "MyFirstHook",
-				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
+			KeepProgramSpec: true,
 		},
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
 				UID:          "",
-				EBPFSection:  "kretprobe/mkdir",
 				EBPFFuncName: "kretprobe_mkdir",
 			},
 			SyscallFuncName: "mkdir",
@@ -49,7 +54,7 @@ var editors = []manager.ConstantEditor{
 		Value:         uint64(100),
 		FailOnMissing: true,
 		ProbeIdentificationPairs: []manager.ProbeIdentificationPair{
-			{UID: "MyFirstHook", EBPFSection: "kprobe/vfs_mkdir", EBPFFuncName: "kprobe_vfs_mkdir"},
+			{UID: "MyFirstHook", EBPFFuncName: "kprobe_vfs_mkdir"},
 		},
 	},
 	{
@@ -57,7 +62,7 @@ var editors = []manager.ConstantEditor{
 		Value:         uint64(555),
 		FailOnMissing: true,
 		ProbeIdentificationPairs: []manager.ProbeIdentificationPair{
-			{UID: "", EBPFSection: "kprobe/vfs_mkdir", EBPFFuncName: "kprobe_vfs_mkdir"},
+			{UID: "", EBPFFuncName: "kprobe_vfs_mkdir"},
 		},
 	},
 	{
@@ -69,10 +74,13 @@ var editors = []manager.ConstantEditor{
 
 func main() {
 	// Prepare manager options
-	options := manager.Options{ConstantEditors: editors}
+	options := manager.Options{
+		ConstantEditors:          editors,
+		KeepUnmappedProgramSpecs: true,
+	}
 
 	// Initialize the manager
-	if err := m.InitWithOptions(recoverAssets(), options); err != nil {
+	if err := m.InitWithOptions(bytes.NewReader(Probe), options); err != nil {
 		logrus.Fatal(err)
 	}
 

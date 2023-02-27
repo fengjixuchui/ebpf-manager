@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
 	"fmt"
 
 	"github.com/cilium/ebpf"
@@ -8,6 +10,9 @@ import (
 
 	manager "github.com/DataDog/ebpf-manager"
 )
+
+//go:embed ebpf/bin/probe.o
+var Probe []byte
 
 type TestData struct {
 	Input  uint32
@@ -30,7 +35,7 @@ var testData = []TestData{
 func main() {
 	// Initialize the manager
 	var m = &manager.Manager{}
-	if err := m.Init(recoverAssets()); err != nil {
+	if err := m.Init(bytes.NewReader(Probe)); err != nil {
 		logrus.Fatal(err)
 	}
 
@@ -43,7 +48,6 @@ func main() {
 	// Get xdp program used to trigger the tests
 	testProgs, found, err := m.GetProgram(
 		manager.ProbeIdentificationPair{
-			EBPFSection:  "xdp/my_func_test",
 			EBPFFuncName: "my_func_test",
 		},
 	)
@@ -63,12 +67,17 @@ func runtTest(testMap *ebpf.Map, testProg *ebpf.Program) {
 	logrus.Println("Running tests ...")
 	for _, data := range testData {
 		// insert data
-		testMap.Put(testDataKey, data)
+		if err := testMap.Put(testDataKey, data); err != nil {
+			logrus.Fatal(err)
+		}
 
 		// Trigger test - (the 14 bytes is for the minimum packet size required to test an XDP program)
 		outLen, _, err := testProg.Test(make([]byte, 14))
 		if err != nil {
 			logrus.Fatal(err)
+		}
+		if data.Input == 42 && data.Output == 128 {
+			logrus.Printf("(failure expected on next test)")
 		}
 		if outLen == 0 {
 			logrus.Printf("%v - PASS", data)
@@ -82,12 +91,17 @@ func runtBenchmark(testMap *ebpf.Map, testProg *ebpf.Program) {
 	logrus.Println("Running benchmark ...")
 	for _, data := range testData {
 		// insert data
-		testMap.Put(testDataKey, data)
+		if err := testMap.Put(testDataKey, data); err != nil {
+			logrus.Fatal(err)
+		}
 
 		// Trigger test
 		outLen, duration, err := testProg.Benchmark(make([]byte, 14), 1000, nil)
 		if err != nil {
 			logrus.Fatal(err)
+		}
+		if data.Input == 42 && data.Output == 128 {
+			logrus.Printf("(failure expected on next benchmark)")
 		}
 		if outLen == 0 {
 			logrus.Printf("%v - PASS (duration: %v)", data, duration)

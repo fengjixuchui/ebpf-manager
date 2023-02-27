@@ -1,15 +1,24 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
+
 	manager "github.com/DataDog/ebpf-manager"
+
 	"github.com/sirupsen/logrus"
 )
+
+//go:embed ebpf/bin/probe1.o
+var Probe1 []byte
+
+//go:embed ebpf/bin/probe2.o
+var Probe2 []byte
 
 var m1 = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kretprobe/vfs_mkdir",
 				EBPFFuncName: "kretprobe_vfs_mkdir",
 			},
 		},
@@ -20,7 +29,6 @@ var m2 = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "kprobe/vfs_mkdir",
 				EBPFFuncName: "kprobe_vfs_mkdir",
 			},
 		},
@@ -29,7 +37,7 @@ var m2 = &manager.Manager{
 
 func main() {
 	// Initialize & start m1
-	if err := m1.Init(recoverAsset("/prog1.o")); err != nil {
+	if err := m1.Init(bytes.NewReader(Probe1)); err != nil {
 		logrus.Fatal(err)
 	}
 	if err := m1.Start(); err != nil {

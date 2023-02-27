@@ -1,19 +1,24 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
+
 	"github.com/sirupsen/logrus"
 
 	manager "github.com/DataDog/ebpf-manager"
 )
 
+//go:embed ebpf/bin/probe.o
+var Probe []byte
+
 var m = &manager.Manager{
 	Probes: []*manager.Probe{
 		{
 			ProbeIdentificationPair: manager.ProbeIdentificationPair{
-				EBPFSection:  "xdp/ingress",
 				EBPFFuncName: "ingress",
 			},
-			Ifindex:       2, // change this to the interface index connected to the internet
+			IfIndex:       2, // change this to the interface index connected to the internet
 			XDPAttachMode: manager.XdpAttachModeSkb,
 		},
 	},
@@ -21,7 +26,7 @@ var m = &manager.Manager{
 
 func main() {
 	// Initialize the manager
-	if err := m.Init(recoverAssets()); err != nil {
+	if err := m.Init(bytes.NewReader(Probe)); err != nil {
 		logrus.Fatal(err)
 	}
 

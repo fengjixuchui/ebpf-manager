@@ -1,7 +1,6 @@
 package manager
 
 import (
-	"fmt"
 	"math"
 	"testing"
 
@@ -14,33 +13,31 @@ import (
 //
 // The C should look something like this:
 //
-//    #define LOAD_CONSTANT(param, var) asm("%0 = " param " ll" : "=r"(var))
+//	#define LOAD_CONSTANT(param, var) asm("%0 = " param " ll" : "=r"(var))
 //
-//    int xdp() {
-//        bool my_constant;
-//        LOAD_CONSTANT("SYMBOL_NAME", my_constant);
+//	int xdp() {
+//	    bool my_constant;
+//	    LOAD_CONSTANT("SYMBOL_NAME", my_constant);
 //
-//        if (my_constant) ...
-func ExampleEditor_rewriteConstant() {
-	// This assembly is roughly equivalent to what clang
-	// would emit for the C above.
-	insns := asm.Instructions{
-		asm.LoadImm(asm.R0, 0, asm.DWord),
-		asm.Return(),
-	}
-
-	insns[0].Reference = "my_ret"
-
-	editor := Edit(&insns)
-	if err := editor.RewriteConstant("my_ret", 42); err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("%0.0s", insns)
-
-	// Output: 0: LdImmDW dst: r0 imm: 42 <my_ret>
-	// 2: Exit
-}
+//	    if (my_constant) ...
+//func ExampleEditor_rewriteConstant() {
+//	// This assembly is roughly equivalent to what clang
+//	// would emit for the C above.
+//	insns := asm.Instructions{
+//		asm.LoadImm(asm.R0, 0, asm.DWord).WithReference("my_ret"),
+//		asm.Return(),
+//	}
+//
+//	editor := newEditor(&insns)
+//	if err := editor.RewriteConstant("my_ret", 42); err != nil {
+//		panic(err)
+//	}
+//
+//	fmt.Printf("%0.0s", insns)
+//
+//	// Output: 0: LdImmDW dst: r0 imm: 42 <my_ret>
+//	// 2: Exit
+//}
 
 func TestEditorRewriteConstant(t *testing.T) {
 	spec, err := ebpf.LoadCollectionSpec("testdata/rewrite.elf")
@@ -49,13 +46,13 @@ func TestEditorRewriteConstant(t *testing.T) {
 	}
 
 	progSpec := spec.Programs["socket"]
-	editor := Edit(&progSpec.Instructions)
+	editor := newEditor(&progSpec.Instructions)
 
 	if err := editor.RewriteConstant("constant", 0x01); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := editor.RewriteConstant("bogus", 0x01); !IsUnreferencedSymbol(err) {
+	if err := editor.RewriteConstant("bogus", 0x01); !isUnreferencedSymbol(err) {
 		t.Error("Rewriting unreferenced symbol doesn't return appropriate error")
 	}
 
@@ -82,17 +79,15 @@ func TestEditorIssue59(t *testing.T) {
 	max := uint64(math.MaxUint64)
 
 	insns := asm.Instructions{
-		asm.LoadImm(asm.R1, 0, asm.DWord),
+		asm.LoadImm(asm.R1, 0, asm.DWord).WithReference("my_ret"),
 		asm.RSh.Imm(asm.R1, 63),
 		asm.Mov.Imm(asm.R0, 1),
 		asm.JGT.Imm(asm.R1, 0, "exit"),
 		asm.Mov.Imm(asm.R0, 0),
-		asm.Return().Sym("exit"),
+		asm.Return().WithSymbol("exit"),
 	}
 
-	insns[0].Reference = "my_ret"
-
-	editor := Edit(&insns)
+	editor := newEditor(&insns)
 	if err := editor.RewriteConstant("my_ret", max); err != nil {
 		t.Fatal(err)
 	}
